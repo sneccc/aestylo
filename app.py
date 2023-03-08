@@ -6,7 +6,7 @@ from prepare_training_data import prepare_training_data
 from train_predictor import train_predictor
 from predict_score import predict_score, validate_prediction
 from export_prediction import export_prediction
-
+import torch.multiprocessing
 app = Flask(__name__)
 
 @app.route('/')
@@ -124,6 +124,7 @@ def assign_metadata(image_name):
 
 if __name__ == '__main__':
 
+    torch.multiprocessing.set_start_method('spawn')
     # init globals
     root_folder = None
     database_file = None

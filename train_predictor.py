@@ -5,6 +5,7 @@ import torch.nn as nn
 import pytorch_lightning as pl
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from torch.utils.data.dataloader import default_collate
 from torch.utils.data import TensorDataset, DataLoader
 from tqdm import trange
 
@@ -68,12 +69,12 @@ def train_predictor(root_folder, database_file, train_from, clip_model="ViT-L/14
     train_tensor_x = torch.Tensor(x[:train_border])
     train_tensor_y = torch.Tensor(y[:train_border])
     train_dataset = TensorDataset(train_tensor_x, train_tensor_y)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=16)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x)))
 
     val_tensor_x = torch.Tensor(x[train_border:])
     val_tensor_y = torch.Tensor(y[train_border:])
     val_dataset = TensorDataset(val_tensor_x, val_tensor_y)
-    val_loader = DataLoader(val_dataset, batch_size=512, num_workers=16)
+    val_loader = DataLoader(val_dataset, batch_size=512,collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x)))
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
