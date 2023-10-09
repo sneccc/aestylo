@@ -5,33 +5,73 @@ from tqdm import tqdm
 import pandas as pd
 import pathlib
 
-from train_predictor import MLP
+from train_predictor import MLP #MLP BertAestheticScorePredictor
 from prepare_training_data import normalized
+import open_clip
 
 
-def predict_score(root_folder, database_file, train_from, clip_model="ViT-L/14"):
+def predict_score(root_folder, database_file, train_from, clip_models):
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     prefix = database_file.split(".")[0]
     path = pathlib.Path(root_folder)
     database_path = path / database_file
     database = pd.read_csv(database_path)
-    model = MLP(768)  # CLIP embedding dim is 768 for CLIP ViT L 14
-    model_name = f"{prefix}_linear_predictor_{clip_model.replace('/', '').lower()}_{train_from}_mse.pth"
+
+    #clip_models=[('ViT-B-16', 'openai'),('RN50', 'openai')]
+
+
+
+    total_dim = 0
+    models = []
+    preprocessors = []
+
+    for clip_model in clip_models:
+        config = open_clip.get_model_config(clip_model[0])
+        if config is not None and 'embed_dim' in config:
+            total_dim += config['embed_dim']
+        else:
+            raise ValueError(f"Embedding dimension not found for model {clip_model[0]}")
+
+        model, _, preprocess = open_clip.create_model_and_transforms(clip_model[0], pretrained=clip_model[1], device=device)
+        models.append(model)
+        preprocessors.append(preprocess)
+
+    # Use the total dimension for the MLP model
+    mlp_model = MLP(total_dim)
+
+    
+    model_name = f"{prefix}_linear_predictor_concatenated_{train_from}_mse.pth"
     s = torch.load(path / model_name)   # load the model you trained previously or the model available in this repo
-    model.load_state_dict(s)
-    model.to("cuda")
-    model.eval()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model2, preprocess = clip.load("ViT-L/14", device=device)  #RN50x64   
+    mlp_model.load_state_dict(s)
+    mlp_model.to("cuda")
+    mlp_model.eval()
+    
     
     pred = []
+
     for i, row in tqdm(database.iterrows(), total=database.shape[0]):
+        #Get the image
         pil_image = Image.open(row["path"])
-        image = preprocess(pil_image).unsqueeze(0).to(device)
-        with torch.no_grad():
-           image_features = model2.encode_image(image)
-        im_emb_arr = normalized(image_features.cpu().detach().numpy() )
-        prediction = model(torch.from_numpy(im_emb_arr).to(device).type(torch.cuda.FloatTensor))
+
+        image_features_list = []
+
+        for j, model in enumerate(models):
+            image = preprocessors[j](pil_image).unsqueeze(0).to(device)
+            with torch.no_grad():
+                image_features = model.encode_image(image)
+                image_features_list.append(image_features)
+
+        # Concatenate the embeddings along the feature dimension
+        concatenated_features = torch.cat(image_features_list, dim=1)
+
+        # Normalize
+        im_emb_arr = normalized(concatenated_features.cpu().detach().numpy())
+
+        # Predict
+        prediction = mlp_model(torch.from_numpy(im_emb_arr).to(device).type(torch.cuda.FloatTensor))
         pred.append(prediction.item())
+
 
     if train_from == "label":
         database["label_pred"] = pred

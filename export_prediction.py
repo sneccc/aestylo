@@ -35,13 +35,35 @@ def export_prediction(root_folder, database_file, export_from):
             subfolder_good.mkdir(parents=True)
         if not subfolder_bad.exists():
             subfolder_bad.mkdir(parents=True)
-        
+        skipped=0
         for index, row in df.iterrows():
+
             image_path = Path(root_folder) / row["path"]
-            if 1.5 <= row["label_pred"] <= 2:
-                shutil.copy2(image_path, subfolder_good)
-            elif 1.0 <= row["label_pred"] < 1.5:
-                shutil.copy2(image_path, subfolder_bad)
+
+            # Extract the filename and its extension
+            filename = image_path.stem
+            #print("Processing file: ",filename, " with score: ",row["label_pred"])
+            ext = image_path.suffix
+
+            # Modify the filename to include the prediction score
+            new_filename = f"{filename}_Score_{row['label_pred']:.2f}{ext}"
+
+            if 0.5 <= row["label_pred"] <= 1:
+                shutil.copy2(image_path, subfolder_good / new_filename)
+            elif 0 <= row["label_pred"] < 0.5:
+                shutil.copy2(image_path, subfolder_bad / new_filename)
+            else:
+                skipped+=1
+
+        
+        # Print min, max, and average score and skipped
+        print("Minimum score:", df["label_pred"].min())
+        print("Maximum score:", df["label_pred"].max())
+        print("Average score:", df["label_pred"].mean())
+        print("Total images skipped:",skipped)
+
+
+
 
     elif export_from == "score":
         df = df[["path", "score"]]

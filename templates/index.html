@@ -48,22 +48,70 @@
             <input type="hidden" name="export_from" value="flag">
         </form>
     </div>
-    <style>
-    .grid-container {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax({{ width }}px, 1fr));
-        grid-template-rows: repeat(auto-fill, minmax(auto-fill, 1fr));
+    
+
+{% if image %}
+<script>
+document.addEventListener('keydown', function(event) {
+    
+    switch(event.key) {
+        case 'ArrowRight':
+            window.location.href = "{{ url_for('forward') }}";
+            break;
+        case 'ArrowLeft':
+            window.location.href = "{{ url_for('back') }}";
+            break;
+        case 'g':
+            postData("{{ url_for('assign_metadata', image_name=image) }}", {col: 'label', val: '2', show: 'False'});
+            break;
+        case 'b':
+            postData("{{ url_for('assign_metadata', image_name=image) }}", {col: 'label', val: '1', show: 'False'});
+            break;        
+        case 'r':
+            window.location.href = "{{ url_for('refresh') }}";
+            break;
+        // ... handle other keys ...
+    }
+});
+
+function postData(url, data) {
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams(data)
+    }).then(response => {
+        if (response.ok) {
+            window.location.reload(); // Reload the page after successful POST
+        } else {
+            console.error('Failed to post data:', response.statusText);
         }
-    </style>
-    <div class="grid-container">
-        {% for image in images %}
-            <div class="grid-item">
+    }).catch(error => {
+        console.error('Error posting data:', error);
+    });
+}
+    </script>
+  {% endif %}  
+        
+
+            <div class="central-item">
+                {% if image  %}
                <div class="grid-image clearfix">
+                <h2>{{ image}} [ {{ current_image_index }} ]</h2>
+
                 <a href="/image/{{ image }}">
-                    <img src="{{ url_for('image', image_name=image) }}" width="{{ width }}" style="width:100%; height:auto;">
+                   
+                    <img id="current-image" src="{{ url_for('image', image_name=image) }}" width="{{width}}" style="width: 512px; height:auto;">
+
                 </a>
                </div>
+
+
+                
                     <div class="button-container clearfix">
+
+                        
                         <form action="{{ url_for('assign_metadata', image_name=image) }}" method="post">
                             <input type="submit" value="Good" class="good-image-button btn">
                             <input type="hidden" name="show" value="False">
@@ -112,10 +160,11 @@
                             <input type="hidden" name="col" value="flag">
                             <input type="hidden" name="val" value="1">
                         </form>
+
                     </div>
-            
+                    {% endif %}
             </div>
-        {% endfor %}
+        
     </div>
 </body>
 </html>

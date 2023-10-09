@@ -2,16 +2,38 @@ import pathlib
 import pandas as pd
 from typing import List
 
-
-def initialize_database(root_folder,database_file):
-
-    # get images in folder
+def initialize_database(root_folder, database_file, is_label_from_folder: bool = False):
+    
     image_path = pathlib.Path(root_folder)
     extensions = ['.jpg', '.jpeg', '.png', '.gif']
     image_path_list = []
-    for path in image_path.rglob('*'):
+    labels = []
+
+    if is_label_from_folder:
+        # If labels should be derived from folder names
+        good_folder = image_path / "good"
+        bad_folder = image_path / "bad"
+
+        for path in good_folder.rglob('*'):
+            if path.is_file() and path.suffix in extensions:
+                image_path_list.append(str(path))
+                labels.append(2)  # Label for good
+
+        for path in bad_folder.rglob('*'):
+            if path.is_file() and path.suffix in extensions:
+                image_path_list.append(str(path))
+                labels.append(1)  # Label for bad
+
+    # Add images directly under root_folder with default label
+    for path in image_path.iterdir():
         if path.is_file() and path.suffix in extensions:
-            image_path_list.append(str(path))
+            # If the image is also inside /good or /bad, remove it from root_folder
+            if (image_path / "good" / path.name).exists() or (image_path / "bad" / path.name).exists():
+                path.unlink()
+            else:
+                image_path_list.append(str(path))
+                labels.append(0)  # Default label
+
     num = len(image_path_list)
 
     # create dataframe
@@ -19,7 +41,7 @@ def initialize_database(root_folder,database_file):
                        'path': image_path_list,
                        'flag': [0] * num,
                        'flag_pred': [0] * num,
-                       'label': [0] * num,
+                       'label': labels,
                        'label_pred': [0] * num,
                        'score': [0] * num,
                        'score_pred': [0] * num,
@@ -42,6 +64,7 @@ def initialize_database(root_folder,database_file):
         df.to_csv(database_path, index=False)
 
     return df
+
 
 def get_random_image(database, n_samples=4):
     unmarked_images = database[database['show'] == True]
