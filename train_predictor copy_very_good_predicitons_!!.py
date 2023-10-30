@@ -159,7 +159,10 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
 
     total_dim = 0
     for clip_model in clip_models:
-        config = open_clip.get_model_config(clip_model[0])
+        if clip_model[0]== "hf-hub:timm":
+            config=open_clip.get_model_config("ViT-B-16-SigLIP-512")#["embed_dim"]  
+        else:
+            config = open_clip.get_model_config(clip_model[0])
         if config is not None and 'embed_dim' in config:
             total_dim += config['embed_dim']
         else:

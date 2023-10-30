@@ -46,7 +46,13 @@ def prepare_training_data(root_folder,database_file,train_from,clip_models):
     preprocessors = []
 
     for clip_model in clip_models:
-        model, _, preprocess = open_clip.create_model_and_transforms(clip_model[0], pretrained=clip_model[1], device=device)
+
+        if clip_model[0] == "hf-hub:timm":
+            model,preprocess = open_clip.create_model_from_pretrained('hf-hub:timm/ViT-B-16-SigLIP-512')
+            model.to(device)
+        else:
+            model, _, preprocess = open_clip.create_model_and_transforms(clip_model[0], pretrained=clip_model[1], device=device)
+        
         models.append(model)
         preprocessors.append(preprocess)
 
@@ -73,7 +79,7 @@ def prepare_training_data(root_folder,database_file,train_from,clip_models):
                 continue
 
             with torch.no_grad():
-                image_features = model.encode_image(image)
+                image_features = model.encode_image(image.to(device)).to(device)
                 image_features_list.append(image_features)
 
         # Concatenate the embeddings along the feature dimension

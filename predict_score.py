@@ -27,13 +27,25 @@ def predict_score(root_folder, database_file, train_from, clip_models):
     preprocessors = []
 
     for clip_model in clip_models:
-        config = open_clip.get_model_config(clip_model[0])
+        if clip_model[0]== "hf-hub:timm":
+            config=open_clip.get_model_config("ViT-B-16-SigLIP-512")#["embed_dim"]  
+        else:
+            config = open_clip.get_model_config(clip_model[0])
+
+
+            
         if config is not None and 'embed_dim' in config:
             total_dim += config['embed_dim']
         else:
             raise ValueError(f"Embedding dimension not found for model {clip_model[0]}")
 
-        model, _, preprocess = open_clip.create_model_and_transforms(clip_model[0], pretrained=clip_model[1], device=device)
+        if clip_model[0] == "hf-hub:timm":
+            model,preprocess = open_clip.create_model_from_pretrained('hf-hub:timm/ViT-B-16-SigLIP-512')
+            model.to(device)
+        else:
+            model, _, preprocess = open_clip.create_model_and_transforms(clip_model[0], pretrained=clip_model[1], device=device)
+
+
         models.append(model)
         preprocessors.append(preprocess)
 
@@ -59,7 +71,7 @@ def predict_score(root_folder, database_file, train_from, clip_models):
         for j, model in enumerate(models):
             image = preprocessors[j](pil_image).unsqueeze(0).to(device)
             with torch.no_grad():
-                image_features = model.encode_image(image)
+                image_features = model.encode_image(image.to(device)).to(device)
                 image_features_list.append(image_features)
 
         # Concatenate the embeddings along the feature dimension

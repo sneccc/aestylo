@@ -122,7 +122,7 @@ def custom_collate_fn(batch):
     return tuple(item.to(device) for item in x_)
 
 
-def train_predictor(root_folder, database_file, train_from, clip_models, val_percentage=0.05, epochs=10000, batch_size=1000):
+def train_predictor(root_folder, database_file, train_from, clip_models, val_percentage=0.1, epochs=5000, batch_size=1000):
 
     #clip_models=[('ViT-B-16', 'openai'),('RN50', 'openai')]
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -157,7 +157,13 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
 
     total_dim = 0
     for clip_model in clip_models:
-        config = open_clip.get_model_config(clip_model[0])
+        #get_model_config("ViT-B-16-SigLIP-512")["embed_dim"]
+        if clip_model[0]== "hf-hub:timm":
+            config=open_clip.get_model_config("ViT-B-16-SigLIP-512")#["embed_dim"]  
+        else:
+            config = open_clip.get_model_config(clip_model[0])
+       
+
         if config is not None and 'embed_dim' in config:
             total_dim += config['embed_dim']
         else:
@@ -168,9 +174,11 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
     model = MLP(total_dim)
     
 
-
-    # Extract model names from clip_models and join them with underscores
-    model_names = "_".join([model[0].replace('/', '').lower() for model in clip_models])
+    if clip_model[0]== "hf-hub:timm":
+        model_names="SigLip"
+        # Extract model names from clip_models and join them with underscores
+    else:
+        model_names = "_".join([model[0].replace('/', '').lower() for model in clip_models])
 
     # Use the combined model names for the logger
     logger = TensorBoardLogger('tb_logs', name=f'my_model_{model_names}',log_graph=True)

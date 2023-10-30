@@ -96,7 +96,7 @@ def train():
 @app.route('/training')
 def training():
     global train_from
-    clip_model=[('ViT-B-16', 'openai'),('ViT-B-32', 'openai')]#,('ViT-L-14', 'openai')]
+    clip_model=[("hf-hub:timm","ViT-B-16-SigLIP-512")]#('ViT-B-16', 'openai'),('ViT-B-32', 'openai')]#,('ViT-L-14', 'openai')]
     prepare_training_data(root_folder,database_file,train_from,clip_model)
     train_predictor(root_folder,database_file,train_from,clip_model)
     predict_score(root_folder,database_file,train_from,clip_model)
