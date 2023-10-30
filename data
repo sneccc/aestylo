@@ -1,0 +1,2 @@
+name,path,flag,flag_pred,label,label_pred,score,score_pred,show
+loss.png,G:\scripts\old\aestylo\loss.png,0,0,0,0,0,0,True
