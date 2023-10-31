@@ -48,7 +48,7 @@ def prepare_training_data(root_folder,database_file,train_from,clip_models):
     for clip_model in clip_models:
 
         if clip_model[0] == "hf-hub:timm":
-            model,preprocess = open_clip.create_model_from_pretrained(clip_model[0]+"/"+clip_model[1])
+            model,preprocess = open_clip.create_model_from_pretrained(clip_model[0]+"/"+clip_model[1]) # for hf-hub:timm/ViT-SO400M-14-SigLIP-384 format
             model.to(device)
         else:
             model, _, preprocess = open_clip.create_model_and_transforms(clip_model[0], pretrained=clip_model[1], device=device)
