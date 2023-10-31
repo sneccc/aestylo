@@ -40,7 +40,7 @@ def predict_score(root_folder, database_file, train_from, clip_models):
             raise ValueError(f"Embedding dimension not found for model {clip_model[0]}")
 
         if clip_model[0] == "hf-hub:timm":
-            model,preprocess = open_clip.create_model_from_pretrained('hf-hub:timm/ViT-B-16-SigLIP-512')
+            model,preprocess = open_clip.create_model_from_pretrained(clip_model[0]+"/"+clip_model[1]) # for hf-hub:timm/ViT-SO400M-14-SigLIP-384 format
             model.to(device)
         else:
             model, _, preprocess = open_clip.create_model_and_transforms(clip_model[0], pretrained=clip_model[1], device=device)

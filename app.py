@@ -97,7 +97,7 @@ def train():
 def training():
     global train_from
     #hf-hub:timm/ViT-SO400M-14-SigLIP-384
-    clip_model=[("hf-hub:timm","ViT-SO400M-14-SigLIP-384")]#('ViT-B-16', 'openai'),('ViT-B-32', 'openai')]#,('ViT-L-14', 'openai')]
+    clip_model=[("hf-hub:timm","ViT-B-16-SigLIP-512")]#('ViT-B-16', 'openai'),('ViT-B-32', 'openai')]#,('ViT-L-14', 'openai')]
     prepare_training_data(root_folder,database_file,train_from,clip_model)
     train_predictor(root_folder,database_file,train_from,clip_model)
     predict_score(root_folder,database_file,train_from,clip_model)
