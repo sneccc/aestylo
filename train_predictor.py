@@ -176,13 +176,13 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
     
 
     if clip_model[0]== "hf-hub:timm":
-        model_names="clip_"+clip_model[0]+"/"+clip_model[1]
+        model_names="clip_"+clip_model[0].replace(':', '_')+"/"+clip_model[1]
         # Extract model names from clip_models and join them with underscores
     else:
         model_names = "_".join([model[0].replace('/', '').lower() for model in clip_models])
 
     # Use the combined model names for the logger
-    logger = TensorBoardLogger('tb_logs', name=f'my_model_{model_names}',log_graph=True)
+    logger = TensorBoardLogger('tb_logs', name=f'{model_names}',log_graph=True)
     
     
     
