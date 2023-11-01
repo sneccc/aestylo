@@ -118,14 +118,15 @@ class MLP(pl.LightningModule):
 
             # Define the epochs where you want to change the learning rate and the corresponding learning rates
             epoch_lr_map = {1: 1e-3, 6750: 1e-5}
-            # Define lambda function
+            current_lr_factor = 1.0  # Initialize with a factor of 1
+
             def lr_lambda(epoch):
-                return epoch_lr_map.get(epoch, default_lr) / default_lr  # Divide by default_lr to get the multiplicative factor
+                nonlocal current_lr_factor  # Declare the variable as nonlocal to modify it
+                if epoch in epoch_lr_map:
+                    current_lr_factor = epoch_lr_map[epoch] / default_lr  # Update the factor
+                return current_lr_factor  # Return the current factor
 
-            # Create the scheduler
             scheduler = LambdaLR(optimizer, lr_lambda)
-
-
             # Define the CosineAnnealingLR scheduler
             #scheduler = CosineAnnealingLR(optimizer, T_max=10000, eta_min=5e-4)  # adjust T_max and eta_min as needed
             #scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=500, verbose=True)
