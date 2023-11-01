@@ -18,7 +18,7 @@ from torchvision import transforms
 import torchmetrics
 from sklearn.metrics import f1_score
 from torch.utils.tensorboard import SummaryWriter
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau,LambdaLR
 
 
 torch.manual_seed(42)
@@ -38,18 +38,19 @@ class MLP(pl.LightningModule):
         self.layers = nn.Sequential(
             nn.Linear(self.input_size, 1024),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.35),
             
-            nn.Linear(1024, 512),
+            nn.Linear(1024, 768),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.25),
             
-            nn.Linear(512, 128),
+            nn.Linear(768, 128),
             nn.ReLU(),
-            nn.Dropout(0.05),
+            nn.Dropout(0.25),
 
             nn.Linear(128, 64),
             nn.ReLU(),
+            nn.Dropout(0.1),
             
             nn.Linear(64, 1)
         )
@@ -103,15 +104,32 @@ class MLP(pl.LightningModule):
         self.log('val_f1', f1, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return {'val_loss': loss, 'val_f1': f1}
 
+
+
+
     def configure_optimizers(self):
-            weight_decay = 1e-8# adjust this value as needed
+            default_lr = 1e-3  # Set a default learning rate
+            weight_decay = 1e-5
+            
+            
             #optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=weight_decay)
-            optimizer = torch.optim.SGD(self.parameters(), lr=2e-3, momentum=0.9, weight_decay=weight_decay)  # Added momentum
+            optimizer = torch.optim.SGD(self.parameters(), lr=default_lr, momentum=0.9, weight_decay=weight_decay)
+            
+
+            # Define the epochs where you want to change the learning rate and the corresponding learning rates
+            epoch_lr_map = {1: 1e-3, 6750: 1e-5}
+            # Define lambda function
+            def lr_lambda(epoch):
+                return epoch_lr_map.get(epoch, default_lr) / default_lr  # Divide by default_lr to get the multiplicative factor
+
+            # Create the scheduler
+            scheduler = LambdaLR(optimizer, lr_lambda)
+
 
             # Define the CosineAnnealingLR scheduler
-            #scheduler = CosineAnnealingLR(optimizer, T_max=5000, eta_min=1e-7)  # adjust T_max and eta_min as needed
+            #scheduler = CosineAnnealingLR(optimizer, T_max=10000, eta_min=5e-4)  # adjust T_max and eta_min as needed
             #scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=500, verbose=True)
-            scheduler = {'scheduler':  ReduceLROnPlateau(optimizer, 'min', factor=0.9,cooldown=50, patience=100, verbose=True),'monitor': 'train_loss_epoch' } # or whatever metric you want to monitor
+            #scheduler = {'scheduler':  ReduceLROnPlateau(optimizer, 'min', factor=0.90,cooldown=100, patience=150, verbose=True),'monitor': 'train_loss_epoch' } # or whatever metric you want to monitor
     
             return [optimizer], [scheduler]
 
@@ -122,7 +140,7 @@ def custom_collate_fn(batch):
     return tuple(item.to(device) for item in x_)
 
 
-def train_predictor(root_folder, database_file, train_from, clip_models, val_percentage=0.1, epochs=5000, batch_size=1000):
+def train_predictor(root_folder, database_file, train_from, clip_models, val_percentage=0.1, epochs=10000, batch_size=1000):
 
     #clip_models=[('ViT-B-16', 'openai'),('RN50', 'openai')]
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
