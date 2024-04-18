@@ -24,8 +24,6 @@ def normalized(a, axis=-1, order=2):
 
 
 def prepare_training_data(root_folder, database_file, train_from, clip_models):
-    # clip_models=[('ViT-B-16', 'openai'),('RN50', 'openai')]
-
     prefix = database_file.split(".")[0]
     path = pathlib.Path(root_folder)
     database_path = path / database_file
@@ -36,65 +34,77 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models):
     elif train_from == "score":
         df = database[database.score != 0].reset_index(drop=True)
 
-    out_path = pathlib.Path(root_folder)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # model, preprocess = clip.load(clip_model, device=device)
-    for clip_model in clip_models:
-        print("Clip Model -> ", clip_model[0], clip_model[1], "full is ", clip_model, " type is ->", type(clip_model))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     models = []
     preprocessors = []
 
     for clip_model in clip_models:
-
         if clip_model[0] == "hf-hub:timm":
             model, preprocess = open_clip.create_model_from_pretrained(
                 clip_model[0] + "/" + clip_model[1])  # for hf-hub:timm/ViT-SO400M-14-SigLIP-384 format
             model.to(device)
+            model.eval()
         else:
             model, _, preprocess = open_clip.create_model_and_transforms(clip_model[0], pretrained=clip_model[1],
                                                                          device=device)
-
         models.append(model)
         preprocessors.append(preprocess)
 
-    x = []
-    y = []
+    # Prepare to collect data
+    x, y = [], []
 
-    for idx, row in tqdm(df.iterrows(), total=df.shape[0]):
+    # Process images in batches
+    batch_size = 128
+    for start_idx in tqdm(range(0, len(df), batch_size), desc="Processing batches"):
+        end_idx = start_idx + batch_size
+        batch_df = df.iloc[start_idx:end_idx]
 
-        if train_from == "label":
-            average_rating = float(row.label)
-        elif train_from == "score":
-            average_rating = float(row.score)
+        # Prepare batch data
+        batch_images = []
+        ratings = []
 
-        if average_rating < 1:
-            continue
+        for _, row in batch_df.iterrows():
+            if train_from == "label":
+                rating = float(row.label)
+            elif train_from == "score":
+                rating = float(row.score)
+
+            if rating < 1:
+                continue
+
+            try:
+                image = Image.open(row.path).convert('RGB')
+                processed_images = [preprocessor(image).unsqueeze(0).to(device) for preprocessor in preprocessors]
+                batch_images.append(torch.cat(processed_images, dim=0))
+                ratings.append(rating)
+            except Exception as e:
+                print(f"Failed to process image {row.path}: {str(e)}")
+                continue
+
+        if not batch_images:
+            continue  # Skip if no valid images were processed
+
+        # Stack images and process through models
+        batch_images_tensor = torch.cat(batch_images, dim=0)
 
         image_features_list = []
 
-        for j, model in enumerate(models):
-            try:
-                image = preprocessors[j](Image.open(row.path)).unsqueeze(0).to(device)
-            except:
-                continue
+        with torch.no_grad(), torch.cuda.amp.autocast():
+            for model in models:
 
-            with torch.no_grad():
-                image_features = model.encode_image(image.to(device)).to(device)
-                image_features_list.append(image_features)
+                features = model.encode_image(batch_images_tensor)
+                image_features_list.append(features)
 
         # Concatenate the embeddings along the feature dimension
-        concatenated_features = torch.cat(image_features_list, dim=1)
+        concatenated_features = torch.cat(image_features_list, dim=1).cpu().detach().numpy()
+        x.extend(concatenated_features)
+        y.extend(ratings)
 
-        im_emb_arr = concatenated_features.cpu().detach().numpy()
-        x.append(normalized(im_emb_arr))
-        y.append([average_rating])
-
+    # Convert lists to numpy arrays and save
     x = np.vstack(x)
-    y = np.vstack(y)
+    y = np.array(y).reshape(-1, 1)
     x_out = f"{prefix}_x_concatenated_embeddings.npy"
     y_out = f"{prefix}_y_{train_from}.npy"
-    np.save(out_path / x_out, x)
-    np.save(out_path / y_out, y)
-    return
+    np.save(path / x_out, x)
+    np.save(path / y_out, y)
