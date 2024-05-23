@@ -22,7 +22,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 
 torch.manual_seed(42)
 np.random.seed(42)
-
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class MLP(pl.LightningModule):
     def __init__(self, input_size, xcol='emb', ycol='avg_rating'):
@@ -126,7 +126,6 @@ class MLP(pl.LightningModule):
 
 
 def custom_collate_fn(batch):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     x_ = default_collate(batch)
     return tuple(item.to(device) for item in x_)
 
@@ -134,7 +133,6 @@ def custom_collate_fn(batch):
 def train_predictor(root_folder, database_file, train_from, clip_models, val_percentage=0.1, epochs=10000,
                     batch_size=1000):
     # clip_models=[('ViT-B-16', 'openai'),('RN50', 'openai')]
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     prefix = database_file.split(".")[0]
     out_path = pathlib.Path(root_folder)
@@ -144,8 +142,6 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
 
     x = np.load(out_path / x_out)
     y = np.load(out_path / y_out)
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     train_border = int(x.shape[0] * (1 - val_percentage))
 
@@ -184,7 +180,9 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
         model_names = "_".join([model[0].replace('/', '').lower() for model in clip_models])
 
     # Use the combined model names for the logger
-    logger = TensorBoardLogger('tb_logs', name=f'{model_names}', log_graph=True)
+    name = f'{model_names}'
+    print(f"Tensor Board log name : {name}")
+    logger = TensorBoardLogger('tb_logs', name=name, log_graph=True)
 
     # Create the LearningRateMonitor callback
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
