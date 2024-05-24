@@ -6,6 +6,7 @@ import pandas as pd
 import pathlib
 
 from train_predictor import MLP  # MLP BertAestheticScorePredictor
+from train_new import MultiLayerPerceptron
 from prepare_training_data import normalized
 import open_clip
 
@@ -41,14 +42,14 @@ def predict_score(root_folder, database_file, train_from, clip_models):
         preprocessors.append(preprocess)
 
     # Use the total dimension for the MLP model
-    mlp_model = MLP(total_dim)
+    mlp_model = MultiLayerPerceptron(total_dim)
     model_name = f"{prefix}_linear_predictor_concatenated_{train_from}_mse.pth"
     mlp_model.load_state_dict(torch.load(path / model_name))
     mlp_model.to(device)
     mlp_model.eval()
 
     batch_size = 32
-    predictions = []
+    total_predictions = []
 
     # Process in batches
     for start_idx in tqdm(range(0, len(database), batch_size), desc="Predicting scores"):
@@ -79,19 +80,26 @@ def predict_score(root_folder, database_file, train_from, clip_models):
         im_emb_arr = normalized(im_emb_arr)
 
         # Predict
-        with torch.no_grad(), torch.cuda.amp.autocast():
-            prediction = mlp_model(torch.from_numpy(im_emb_arr).to(device)) #.type(torch.cuda.FloatTensor)
+        batch_predictions=[]
 
-        predictions.extend(prediction.cpu().numpy())
+        with torch.no_grad(), torch.cuda.amp.autocast():
+            prediction = mlp_model(torch.from_numpy(im_emb_arr).to(device))
+        predicted_labels = torch.argmax(prediction, dim=1).cpu()  # Move to CPU
+
+        predicted_labels += 1
+        print(predicted_labels)
+
+        total_predictions.extend(predicted_labels.numpy().tolist())
+        #   print(total_predictions)
+
 
     if train_from == "label":
-        database["label_pred"] = predictions
+        database["label_pred"] = total_predictions
     elif train_from == "score":
-        database["score_pred"] = predictions
+        database["score_pred"] = total_predictions
 
     database.to_csv(database_path, index=False)
     return database
-
 
 def print_stats(diff):
     print(f"count: {len(diff)}")
@@ -100,25 +108,10 @@ def print_stats(diff):
     print(f"mean: {diff.mean():0.4f}")
     print(f"median: {diff.median():0.4f}")
     print(f"var: {diff.var():0.4f}")
-
-
 def validate_prediction(root_folder, database_file, train_from):
     path = pathlib.Path(root_folder)
     database_path = path / database_file
     df = pd.read_csv(database_path)
-
-    if train_from == "score":
-
-        all = df[df.score != 0]
-        diff = all["score"] - all["score_pred"]
-        print("all -----------------")
-        print_stats(diff)
-
-        for i in range(5, 0, -1):
-            all = df[df.score == i]
-            diff = all["score"] - all["score_pred"]
-            print(f"{i} -----------------")
-            print_stats(diff)
 
     if train_from == "label":
 

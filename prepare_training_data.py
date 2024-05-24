@@ -23,18 +23,16 @@ def normalized(a, axis=-1, order=2):
     return a / np.expand_dims(l2, axis)
 
 
-def prepare_training_data(root_folder, database_file, train_from, clip_models):
+def prepare_training_data(root_folder, database_file, train_from, clip_models, labels_dict):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     prefix = database_file.split(".")[0]
     path = pathlib.Path(root_folder)
     database_path = path / database_file
     database = pd.read_csv(database_path)
 
     if train_from == "label":
-        df = database[database.label != 0].reset_index(drop=True)
-    elif train_from == "score":
-        df = database[database.score != 0].reset_index(drop=True)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        df = database[database.label != 0].reset_index(drop=True) #Drop all values with label 0
+        df['label'] = df['label'] - 1 #shift the range from [1,2,3] to [0,1,2]
 
     models = []
     preprocessors = []
@@ -64,13 +62,14 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models):
         batch_images = []
         ratings = []
 
-        for _, row in batch_df.iterrows():
-            if train_from == "label":
-                rating = float(row.label)
-            elif train_from == "score":
-                rating = float(row.score)
 
-            if rating < 1:
+        for _, row in batch_df.iterrows():
+            rating = 0
+            if train_from == "label":
+                rating = int(row.label)
+
+            if rating == -1:  # Ignoring -1 labels these are for test other than that should be for training
+                print("ignoring label -1")
                 continue
 
             try:
@@ -78,6 +77,7 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models):
                 processed_images = [preprocessor(image).unsqueeze(0).to(device) for preprocessor in preprocessors]
                 batch_images.append(torch.cat(processed_images, dim=0))
                 ratings.append(rating)
+                #print("rating -> ", rating)
             except Exception as e:
                 print(f"Failed to process image {row.path}: {str(e)}")
                 continue
@@ -99,12 +99,15 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models):
         # Concatenate the embeddings along the feature dimension
         concatenated_features = torch.cat(image_features_list, dim=1).cpu().detach().numpy()
         x.extend(concatenated_features)
+
+        ratings = np.array(ratings).astype(int)  # Ensure ratings are integer class labels
         y.extend(ratings)
 
     # Convert lists to numpy arrays and save
     x = np.vstack(x)
-    y = np.array(y).reshape(-1, 1)
+    y = np.array(y).astype(int)
     x_out = f"{prefix}_x_concatenated_embeddings.npy"
     y_out = f"{prefix}_y_{train_from}.npy"
     np.save(path / x_out, x)
     np.save(path / y_out, y)
+

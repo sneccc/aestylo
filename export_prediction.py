@@ -2,7 +2,9 @@ import pandas as pd
 import shutil
 from pathlib import Path
 
-def export_prediction(root_folder, database_file, export_from):
+
+def export_prediction(root_folder, database_file, export_from, labels_dict):
+    assert labels_dict
     prefix = database_file.split(".")[0]
     database_path = Path(root_folder) / database_file
     df = pd.read_csv(database_path)
@@ -10,134 +12,51 @@ def export_prediction(root_folder, database_file, export_from):
     if export_from == "label":
         df = df[["path", "label"]]
         export_folder = Path(root_folder) / f"{prefix}_export_label"
-        subfolder_good = export_folder / "good"
-        subfolder_bad = export_folder / "bad"
-        
-        if not subfolder_good.exists():
-            subfolder_good.mkdir(parents=True)
-        if not subfolder_bad.exists():
-            subfolder_bad.mkdir(parents=True)
-        
+
+        # Create subfolders dynamically based on labels_dict
+        subfolders = {}
+        for label, subfolder_name in labels_dict.items():
+            subfolder_path = export_folder / subfolder_name
+            subfolder_path.mkdir(parents=True, exist_ok=True)
+            subfolders[label] = subfolder_path
+
         for index, row in df.iterrows():
             image_path = Path(root_folder) / row["path"]
-            if row["label"] == 2:
-                shutil.copy2(image_path, subfolder_good)
-            elif row["label"] == 1:
-                shutil.copy2(image_path, subfolder_bad)
-    
+            if row["label"] in subfolders:
+                shutil.copy2(image_path, subfolders[row["label"]])
+
     elif export_from == "label_pred":
-        df = df[["path", "label_pred"]]
+        df = df[["path", "label_name", "label_pred"]]
         export_folder = Path(root_folder) / f"{prefix}_export_label_pred"
-        subfolder_good = export_folder / "good"
-        subfolder_bad = export_folder / "bad"
-        
-        if not subfolder_good.exists():
-            subfolder_good.mkdir(parents=True)
-        if not subfolder_bad.exists():
-            subfolder_bad.mkdir(parents=True)
-        skipped=0
+
+        # Create subfolders dynamically based on labels_dict
+        subfolders = {}
+        for label, subfolder_name in labels_dict.items():
+            subfolder_path = export_folder / subfolder_name
+            subfolder_path.mkdir(parents=True, exist_ok=True)
+            subfolders[label] = subfolder_path
+
+        skipped = 0
+
         for index, row in df.iterrows():
 
+            if not row["label_name"] == "Unlabeled":
+                continue
+
             image_path = Path(root_folder) / row["path"]
-
-            # Extract the filename and its extension
             filename = image_path.stem
-            #print("Processing file: ",filename, " with score: ",row["label_pred"])
             ext = image_path.suffix
+            new_filename = f"{filename}_Score_{float(row['label_pred']):.2f}{ext}"
 
-            # Modify the filename to include the prediction score
-            new_filename = f"{filename}_Score_{row['label_pred']:.2f}{ext}"
-
-            if 0.5 <= row["label_pred"] <= 1:
-                shutil.copy2(image_path, subfolder_good / new_filename)
-            elif 0 <= row["label_pred"] < 0.5:
-                shutil.copy2(image_path, subfolder_bad / new_filename)
+            if row["label_pred"] in subfolders:
+                shutil.copy2(image_path, subfolders[row["label_pred"]] / new_filename)
             else:
-                skipped+=1
+                skipped += 1
 
-        
         # Print min, max, and average score and skipped
         print("Minimum score:", df["label_pred"].min())
         print("Maximum score:", df["label_pred"].max())
         print("Average score:", df["label_pred"].mean())
-        print("Total images skipped:",skipped)
-
-
-
-
-    elif export_from == "score":
-        df = df[["path", "score"]]
-        export_folder = Path(root_folder) / f"{prefix}_export_score"
-        
-        subfolder_1 = export_folder / "1"
-        subfolder_2 = export_folder / "2"
-        subfolder_3 = export_folder / "3"
-        subfolder_4 = export_folder / "4"
-        subfolder_5 = export_folder / "5"
-        
-        if not subfolder_1.exists():
-            subfolder_1.mkdir(parents=True)
-        if not subfolder_2.exists():
-            subfolder_2.mkdir(parents=True)
-        if not subfolder_3.exists():
-            subfolder_3.mkdir(parents=True)
-        if not subfolder_4.exists():
-            subfolder_4.mkdir(parents=True)
-        if not subfolder_5.exists():
-            subfolder_5.mkdir(parents=True)
-        
-        for index, row in df.iterrows():
-            image_path = Path(root_folder) / row["path"]
-            if row["score"] == 1:
-                shutil.copy2(image_path, subfolder_1)
-            elif row["score"] == 2:
-                shutil.copy2(image_path, subfolder_2)
-            elif row["score"] == 3:
-                shutil.copy2(image_path, subfolder_3)
-            elif row["score"] == 4:
-                shutil.copy2(image_path, subfolder_4)
-            elif row["score"] == 5:
-                shutil.copy2(image_path, subfolder_5)
-    
-    elif export_from == "score_pred":
-        df = df[["path", "score_pred"]]
-        export_folder = Path(root_folder) / f"{prefix}_export_score_pred"
-        
-        subfolder_1_2 = export_folder / "1_2"
-        subfolder_2_3 = export_folder / "2_3"
-        subfolder_3_4 = export_folder / "3_4"
-        subfolder_4_5 = export_folder / "4_5"
-        
-        if not subfolder_1_2.exists():
-            subfolder_1_2.mkdir(parents=True)
-        if not subfolder_2_3.exists():
-            subfolder_2_3.mkdir(parents=True)
-        if not subfolder_3_4.exists():
-            subfolder_3_4.mkdir(parents=True)
-        if not subfolder_4_5.exists():
-            subfolder_4_5.mkdir(parents=True)
-        
-        for index, row in df.iterrows():
-            image_path = Path(root_folder) / row["path"]
-            if row["score_pred"] < 2:
-                shutil.copy2(image_path, subfolder_1_2)
-            elif 2 <= row["score_pred"] < 3:
-                shutil.copy2(image_path, subfolder_2_3)
-            elif 3 <= row["score_pred"] < 4:
-                shutil.copy2(image_path, subfolder_3_4)
-            elif row["score_pred"] >= 4:
-                shutil.copy2(image_path, subfolder_4_5)
-
-    if export_from == "flag":
-        df = df[["path", "flag"]]
-        export_folder = Path(root_folder) / f"{prefix}_export_flag"
-        
-        if not export_folder.exists():
-            export_folder.mkdir(parents=True)
-        
-        for index, row in df.iterrows():
-            image_path = Path(root_folder) / row["path"]
-            if row["flag"] == 1:
-                shutil.copy2(image_path, export_folder)
+        print("Total images skipped:", skipped)
 
     return

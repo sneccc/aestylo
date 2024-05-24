@@ -11,12 +11,14 @@ from tqdm import trange
 from pytorch_lightning.loggers import TensorBoardLogger
 import matplotlib.pyplot as plt
 import open_clip
+from torch import nn, optim, Tensor, manual_seed, argmax
 from torch.optim.lr_scheduler import StepLR
 from pytorch_lightning.callbacks import LearningRateMonitor
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torchvision import transforms
+
 import torchmetrics
-from sklearn.metrics import f1_score
+from torchmetrics.classification import Accuracy
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 
@@ -24,17 +26,22 @@ torch.manual_seed(42)
 np.random.seed(42)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+
 class MLP(pl.LightningModule):
-    def __init__(self, input_size, xcol='emb', ycol='avg_rating'):
+    def __init__(self, input_size, num_classes=3, xcol='embeddings', ycol='label_id', optimizer="sdg"):
         super().__init__()
         self.input_size = input_size
+        self.num_classes = num_classes
+        self.optimizer = optimizer
+        self.lr = {'Adam': 0.001, 'SGD': 0.1}[optimizer]
+
         # Set the example_input_array for TensorBoard
         self.example_input_array = torch.randn(1, self.input_size)
 
         print("Input_Size: ", input_size)
         self.xcol = xcol
         self.ycol = ycol
-        self.layers = nn.Sequential(
+        self.model = nn.Sequential(
             nn.Linear(self.input_size, 1024),
             nn.ReLU(),
             nn.Dropout(0.35),
@@ -49,80 +56,62 @@ class MLP(pl.LightningModule):
 
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Dropout(0.1),
 
-            nn.Linear(64, 1)
+            nn.Linear(64, num_classes)  # Output 3 logits for 3 classes
         )
 
+        self.accuracy = Accuracy(task="multiclass", num_classes=num_classes)
+        self.loss = nn.CrossEntropyLoss()
+
     def forward(self, x):
-        # x = self.layers(x)
-        # Apply sigmoid and scale to (1, 2) range
-        # return 1 + torch.sigmoid(x)
-        # return self.layers(x)
-        x = self.layers(x)
-        return torch.sigmoid(x)  # Squash output between 0 and 1
+        return self.model(x)
 
     def training_step(self, batch, batch_idx):
-        # x, y = batch
-        # x_hat = self(x)
-        # loss = F.mse_loss(x_hat, y)
-        # self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        # return loss
         x, y = batch
-        y = (y - 1).float()  # Convert labels from [1, 2] to [0, 1]
-        x_hat = self(x)
-        loss = F.binary_cross_entropy(x_hat, y)
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        logits = self.forward(x)
+        loss = self.loss(logits, y)
+        self.log('loss', loss)
+
+        # Track accuracy
+        y_target = argmax(y, dim=1)
+        y_pred = argmax(logits, dim=1)
+        acc = self.accuracy(y_pred, y_target)
+        self.log('accuracy', acc)
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
-        # y = y.reshape(-1, 1)  # Reshape y to ensure it's a 2D tensor
-        # y = (y - 1).float()  # Convert labels from [1, 2] to [0, 1]
-        y_binary = (y.cpu().numpy() - 1).astype(int)  # Convert labels from [1, 2] to [0, 1]
-        y_binary_tensor = torch.tensor(y_binary).float().to(y.device)
-        x_hat = self(x)
-        # loss = F.mse_loss(x_hat, y)
-        loss = F.binary_cross_entropy(x_hat, y_binary_tensor)
+        logits = self.forward(x)
+        print(logits)
+        loss = self.loss(logits, y)
+        self.log('val_loss', loss)
 
-        # Convert continuous predictions to binary labels
-        # pred_labels = torch.where(x_hat > 1.5, torch.tensor(2.0).to(x_hat.device), torch.tensor(1.0).to(x_hat.device))
-        pred_labels_binary = (x_hat > 0.5).float().cpu().numpy().astype(int)
-
-        # Compute F1 score
-        # f1 = f1_score(y.cpu().numpy(), pred_labels.cpu().numpy(), pos_label=2)  # considering "good" as the positive class
-        # Compute F1 score
-        # f1 = f1_score(y.cpu().numpy() * 2 + 1, pred_labels.cpu().numpy(), pos_label=2)  # considering "good" as the positive class
-        f1 = f1_score(y_binary, pred_labels_binary, labels=[0, 1], pos_label=1)
-
-        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('val_f1', f1, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        return {'val_loss': loss, 'val_f1': f1}
+        # Track accuracy
+        y_target = y
+        y_pred = argmax(logits, dim=1)
+        acc = self.accuracy(y_pred, y_target)
+        self.log('val_accuracy', acc, logger=True)
 
     def configure_optimizers(self):
-        default_lr = 1e-3  # Set a default learning rate
-        weight_decay = 1e-5
+        if self.optimizer == 'Adam':
+            optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+            return optimizer
+        else:
+            default_lr = 1e-3
+            weight_decay = 1e-5
+            epoch_lr_map = {1: 1e-3, 6750: 1e-5}
+            current_lr_factor = 1.0
 
-        # optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=weight_decay)
-        optimizer = torch.optim.SGD(self.parameters(), lr=default_lr, momentum=0.9, weight_decay=weight_decay)
+            def lr_lambda(epoch):
+                nonlocal current_lr_factor  # Declare the variable as nonlocal to modify it
+                if epoch in epoch_lr_map:
+                    current_lr_factor = epoch_lr_map[epoch] / default_lr  # Update the factor
+                return current_lr_factor  # Return the current factor
 
-        # Define the epochs where you want to change the learning rate and the corresponding learning rates
-        epoch_lr_map = {1: 1e-3, 6750: 1e-5}
-        current_lr_factor = 1.0  # Initialize with a factor of 1
-
-        def lr_lambda(epoch):
-            nonlocal current_lr_factor  # Declare the variable as nonlocal to modify it
-            if epoch in epoch_lr_map:
-                current_lr_factor = epoch_lr_map[epoch] / default_lr  # Update the factor
-            return current_lr_factor  # Return the current factor
-
-        scheduler = LambdaLR(optimizer, lr_lambda)
-        # Define the CosineAnnealingLR scheduler
-        # scheduler = CosineAnnealingLR(optimizer, T_max=10000, eta_min=5e-4)  # adjust T_max and eta_min as needed
-        # scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=500, verbose=True)
-        # scheduler = {'scheduler':  ReduceLROnPlateau(optimizer, 'min', factor=0.90,cooldown=100, patience=150, verbose=True),'monitor': 'train_loss_epoch' } # or whatever metric you want to monitor
-
-        return [optimizer], [scheduler]
+            optimizer = torch.optim.SGD(self.parameters(), lr=default_lr, momentum=0.9, weight_decay=weight_decay)
+            scheduler = LambdaLR(optimizer, lr_lambda)
+            return [optimizer], [scheduler]
+        return optimizer
 
 
 def custom_collate_fn(batch):
@@ -130,7 +119,7 @@ def custom_collate_fn(batch):
     return tuple(item.to(device) for item in x_)
 
 
-def train_predictor(root_folder, database_file, train_from, clip_models, val_percentage=0.1, epochs=10000,
+def train_predictor(root_folder, database_file, train_from, clip_models, val_percentage=0.25, epochs=5000,
                     batch_size=1000):
     # clip_models=[('ViT-B-16', 'openai'),('RN50', 'openai')]
 
@@ -140,18 +129,20 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
     y_out = f"{prefix}_y_{train_from}.npy"
     save_name = f"{prefix}_linear_predictor_concatenated_{train_from}_mse.pth"
 
-    x = np.load(out_path / x_out)
-    y = np.load(out_path / y_out)
+    x_embeddings_path = out_path / x_out
+    y_features_path = out_path / y_out
+    x_embeddings = np.load(x_embeddings_path)
+    y_features = np.load(y_features_path)
 
     train_border = int(x.shape[0] * (1 - val_percentage))
 
     train_tensor_x = torch.Tensor(x[:train_border])
-    train_tensor_y = torch.Tensor(y[:train_border])
+    train_tensor_y = torch.Tensor(y[:train_border]).long()
     train_dataset = TensorDataset(train_tensor_x, train_tensor_y)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
 
     val_tensor_x = torch.Tensor(x[train_border:])
-    val_tensor_y = torch.Tensor(y[train_border:])
+    val_tensor_y = torch.Tensor(y[train_border:]).long()
     val_dataset = TensorDataset(val_tensor_x, val_tensor_y)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
@@ -171,7 +162,8 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
 
     # Use the total dimension for the MLP model
     print("total_dim: ", total_dim)
-    model = MLP(total_dim)
+
+    model = MLP(total_dim, num_classes=3)
 
     if clip_model[0] == "hf-hub:timm":
         model_names = "clip_" + clip_model[0].replace(':', '_') + "/" + clip_model[1]
@@ -198,6 +190,7 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
     )
 
     trainer.fit(model, train_loader, val_loader)
+    # trainer.test(model, val_loader)
 
     # trainer.save_checkpoint(str(out_path / save_name))
 

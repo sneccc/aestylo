@@ -2,6 +2,7 @@ import argparse
 from helpers import initialize_database_any
 from prepare_training_data import prepare_training_data
 from train_predictor import train_predictor
+from train_new import start_training
 from predict_score import predict_score, validate_prediction
 from tensorboard.program import TensorBoard
 from export_prediction import export_prediction
@@ -18,24 +19,27 @@ def launch_tensorboard(logdir):
     # Start TensorBoard
     url = tb.launch()
     print(f"TensorBoard started. You can navigate to {url}")
-# ('ViT-B-16', 'openai'),('ViT-B-32', 'openai')]#,('ViT-L-14', 'openai')]
-# P:\python\aesthetics\aestylo\data\Scrapes\3d_test
+    # ('ViT-B-16', 'openai'),('ViT-B-32', 'openai')]#,('ViT-L-14', 'openai')]
+    # P:\python\aesthetics\aestylo\data\Scrapes\3d_test
 
 def main(arguments):
-    database_file = "database"
+    database_file = "database.csv"
+    clip_model = [("hf-hub:timm", "ViT-SO400M-14-SigLIP-384")]
+    labels_dict={}
     if not arguments.export:
         # Call the function with the path to your logs
-        #launch_tensorboard('tb_logs')
-        database = initialize_database_any(arguments.input, database_file, is_label_from_folder=True)
-        print(database)
+        launch_tensorboard('tb_logs')
+        _, labels_dict  = initialize_database_any(arguments.input, database_file, is_label_from_folder=True)
+        print(labels_dict)
 
-        clip_model = [("hf-hub:timm", "ViT-SO400M-14-SigLIP-384")]
-        #prepare_training_data(arguments.input, database_file, "label", clip_model)
-        #train_predictor(arguments.input, database_file, "label", clip_model)
-        #predict_score(arguments.input, database_file, "label", clip_model)
-        #validate_prediction(arguments.input, database_file, "label")
+        prepare_training_data(arguments.input, database_file, "label", clip_model,labels_dict)
+        start_training(arguments.input, database_file, "label", clip_model)
     else:
-        export_prediction(arguments.input, database_file, "label")
+        print("")
+        #validate_prediction(arguments.input, database_file, "label")
+        _, labels_dict = initialize_database_any(arguments.input, database_file, is_label_from_folder=True)
+        predict_score(arguments.input, database_file, "label", clip_model)
+        export_prediction(arguments.input, database_file, "label_pred",labels_dict)
 
 
 if __name__ == "__main__":
