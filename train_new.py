@@ -16,6 +16,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from torch.utils.data.dataloader import default_collate
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 from torchmetrics import F1Score, Precision, Recall
+from sklearn.model_selection import train_test_split
 
 torch.manual_seed(42)
 np.random.seed(42)
@@ -23,10 +24,11 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class MultiLayerPerceptron(pl.LightningModule):
-    def __init__(self, input_size, hidden_units=(1024, 128, 64)):
+    def __init__(self, class_weight_metrics, input_size, hidden_units=(1024, 128, 64)):
         super().__init__()
         # self.test_acc = Accuracy()
 
+        self.class_weight_metrics = class_weight_metrics
         # Train Metrics
         self.train_acc = Accuracy(num_classes=3, average='macro', multiclass=True)
         self.train_f1_score = F1Score(num_classes=3, average='macro', multiclass=True)
@@ -95,7 +97,7 @@ class MultiLayerPerceptron(pl.LightningModule):
         x = batch[0]
         y = batch[1]
         logits = self(x)
-        loss = nn.functional.cross_entropy(logits, y)
+        loss = nn.functional.cross_entropy(logits, y, weight=self.class_weight_metrics)
         preds = torch.argmax(logits, dim=1)
 
         self.log("train_loss", loss, prog_bar=False, on_step=False, on_epoch=True)
@@ -180,14 +182,15 @@ class MultiLayerPerceptron(pl.LightningModule):
             return [optimizer], [scheduler]
 
 
-def start_training(root_folder, database_file, train_from, clip_models, val_percentage=0.25, epochs=10000,
+def start_training(root_folder, database_file, train_from, clip_models, val_percentage=0.25, epochs=5000,
                    batch_size=1000):
-    train_dataloader, val_dataloader, model_name = setup_dataset(root_folder=root_folder, database_file=database_file,
-                                                                 train_from=train_from)
+    train_dataloader, val_dataloader, model_name, class_weight_metrics = setup_dataset(root_folder=root_folder,
+                                                                                       database_file=database_file,
+                                                                                       train_from=train_from)
     input_size = get_total_dim(clip_models)
     print("input size", input_size)  # 1152
 
-    net = MultiLayerPerceptron(input_size=input_size)
+    net = MultiLayerPerceptron(input_size=input_size, class_weight_metrics=class_weight_metrics)
     callbacks = [
         ModelCheckpoint(save_top_k=1, mode='max', monitor="val_acc"),
         LearningRateMonitor(logging_interval='epoch')
@@ -231,19 +234,36 @@ def setup_dataset(root_folder, database_file, train_from):
     y_features = np.load(y_features_path)
 
     validation_percentage = 0.15
-    batch_size = 1000
-    train_border = int(x_embeddings.shape[0] * (1 - validation_percentage))
+    batch_size = 64
 
-    train_tensor_x = torch.Tensor(x_embeddings[:train_border])
-    train_tensor_y = torch.Tensor(y_features[:train_border]).long()
+    indices = np.arange(x_embeddings.shape[0])
+    np.random.shuffle(indices)
+
+    x_embeddings = x_embeddings[indices]
+    y_features = y_features[indices]
+
+    x_train, x_val, y_train, y_val = train_test_split(
+        x_embeddings, y_features, test_size=validation_percentage, random_state=42, stratify=y_features
+    )
+
+    train_tensor_x = torch.Tensor(x_train)
+    train_tensor_y = torch.Tensor(y_train).long()
+    val_tensor_x = torch.Tensor(x_val)
+    val_tensor_y = torch.Tensor(y_val).long()
+
+    # Calculate class distribution for weights
+    class_counts = np.bincount(train_tensor_y.numpy())
+    total_samples = len(train_tensor_y)
+    class_weights = total_samples / (len(class_counts) * class_counts)
+    class_weight_metrics = torch.tensor(class_weights, dtype=torch.float)
+
     train_dataset = TensorDataset(train_tensor_x, train_tensor_y)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
 
-    val_tensor_x = torch.Tensor(x_embeddings[train_border:])
-    val_tensor_y = torch.Tensor(y_features[train_border:]).long()
     val_dataset = TensorDataset(val_tensor_x, val_tensor_y)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
-    return train_loader, val_loader, model_name
+
+    return train_loader, val_loader, model_name, class_weight_metrics
 
 
 def get_total_dim(clip_models):
