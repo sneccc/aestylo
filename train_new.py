@@ -28,7 +28,7 @@ class MultiLayerPerceptron(pl.LightningModule):
         super().__init__()
         # self.test_acc = Accuracy()
 
-        self.class_weight_metrics = class_weight_metrics
+        self.class_weight_metrics = class_weight_metrics.to(device)
         # Train Metrics
         self.train_acc = Accuracy(num_classes=3, average='macro', multiclass=True)
         self.train_f1_score = F1Score(num_classes=3, average='macro', multiclass=True)
