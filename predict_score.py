@@ -42,7 +42,7 @@ def predict_score(root_folder, database_file, train_from, clip_models):
         preprocessors.append(preprocess)
 
     # Use the total dimension for the MLP model
-    mlp_model = MultiLayerPerceptron(total_dim)
+    mlp_model = MultiLayerPerceptron(input_size=total_dim)
     model_name = f"{prefix}_linear_predictor_concatenated_{train_from}_mse.pth"
     mlp_model.load_state_dict(torch.load(path / model_name))
     mlp_model.to(device)
