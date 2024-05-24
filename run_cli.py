@@ -1,15 +1,13 @@
 import argparse
 from helpers import initialize_database_any
 from prepare_training_data import prepare_training_data
-from train_predictor import train_predictor
 from train_new import start_training
-from predict_score import predict_score, validate_prediction
+from predict_score import predict_score
 from tensorboard.program import TensorBoard
 from export_prediction import export_prediction
-import torch.multiprocessing
-import open_clip
 
-#change
+
+# change
 
 # Create a function to launch TensorBoard
 def launch_tensorboard(logdir):
@@ -22,24 +20,25 @@ def launch_tensorboard(logdir):
     # ('ViT-B-16', 'openai'),('ViT-B-32', 'openai')]#,('ViT-L-14', 'openai')]
     # P:\python\aesthetics\aestylo\data\Scrapes\3d_test
 
+
 def main(arguments):
     database_file = "database.csv"
     clip_model = [("hf-hub:timm", "ViT-SO400M-14-SigLIP-384")]
-    labels_dict={}
+    labels_dict = {}
     if not arguments.export:
         # Call the function with the path to your logs
         launch_tensorboard('tb_logs')
-        _, labels_dict  = initialize_database_any(arguments.input, database_file, is_label_from_folder=True)
+        _, labels_dict = initialize_database_any(arguments.input, database_file, is_label_from_folder=True)
         print(labels_dict)
 
-        prepare_training_data(arguments.input, database_file, "label", clip_model,labels_dict)
+        prepare_training_data(arguments.input, database_file, "label", clip_model, labels_dict)
         start_training(arguments.input, database_file, "label", clip_model)
     else:
         print("")
-        #validate_prediction(arguments.input, database_file, "label")
+        # validate_prediction(arguments.input, database_file, "label")
         _, labels_dict = initialize_database_any(arguments.input, database_file, is_label_from_folder=True)
         predict_score(arguments.input, database_file, "label", clip_model)
-        export_prediction(arguments.input, database_file, "label_pred",labels_dict)
+        export_prediction(arguments.input, database_file, "label_pred", labels_dict)
 
 
 if __name__ == "__main__":

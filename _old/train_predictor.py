@@ -174,7 +174,7 @@ def train_predictor(root_folder, database_file, train_from, clip_models, val_per
     # Use the combined model names for the logger
     name = f'{model_names}'
     print(f"Tensor Board log name : {name}")
-    logger = TensorBoardLogger('tb_logs', name=name, log_graph=True)
+    logger = TensorBoardLogger('../tb_logs', name=name, log_graph=True)
 
     # Create the LearningRateMonitor callback
     lr_monitor = LearningRateMonitor(logging_interval='epoch')

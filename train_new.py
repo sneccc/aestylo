@@ -22,22 +22,15 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, Learning
 torch.manual_seed(42)
 np.random.seed(42)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-class_weight_metrics = None
 
 
 class MultiLayerPerceptron(pl.LightningModule):
-    def __init__(self, input_size, hidden_units=(1024, 256, 16)):
+    def __init__(self, input_size, class_weights=None, hidden_units=(1024, 512, 126, 64, 64, 64, 64, 64)):
         super().__init__()
         # self.test_acc = Accuracy()
 
-        global class_weight_metrics
-
-        if class_weight_metrics is not None:
-            self.class_weight_metrics = class_weight_metrics.to(
-                device)  # This will ajust the weight for each label based on the data so its more balanced
-
-        self.loss_Function = nn.CrossEntropyLoss(weight=self.class_weight_metrics)
-
+        # Loss function
+        self.loss_fn = nn.CrossEntropyLoss(weight=class_weights) if class_weights is not None else nn.CrossEntropyLoss()
 
         # Train Metrics
         self.train_acc = Accuracy(num_classes=3, average='macro', multiclass=True)
@@ -53,12 +46,13 @@ class MultiLayerPerceptron(pl.LightningModule):
 
         all_layers = [nn.Flatten()]
         for index, hidden_unit in enumerate(hidden_units):
-            all_layers.append(nn.Linear(input_size, hidden_unit))  # Linear layer
-            all_layers.append(nn.ReLU())
+            all_layers.append(nn.Linear(input_size, hidden_unit))
+            all_layers.append(nn.LeakyReLU())
             if index < len(hidden_units) - 1:
-                all_layers.append(nn.Dropout(0.2))
+                all_layers.append(nn.Dropout(0.1))  # Reduced dropout
             input_size = hidden_unit
 
+        # Output layer for 3 classes (assuming classification with 3 exclusive classes)
         all_layers.append(nn.Linear(hidden_units[-1], 3))
         self.model = nn.Sequential(*all_layers)
 
@@ -89,7 +83,7 @@ class MultiLayerPerceptron(pl.LightningModule):
         x = batch[0]
         y = batch[1]
         logits = self(x)
-        loss = self.loss_Function(logits, y)
+        loss = self.loss_fn(logits, y)
 
         preds = torch.argmax(logits, dim=1)
 
@@ -106,7 +100,7 @@ class MultiLayerPerceptron(pl.LightningModule):
         x = batch[0]
         y = batch[1]
         logits = self(x)
-        loss = self.loss_Function(logits, y)
+        loss = self.loss_fn(logits, y)
         preds = torch.argmax(logits, dim=1)
 
         self.log("train_loss", loss, prog_bar=False, on_step=False, on_epoch=True)
@@ -178,7 +172,7 @@ class MultiLayerPerceptron(pl.LightningModule):
             default_lr = 2e-3
 
             # Learning rate adjustments for specific epochs
-            epoch_lr_map = {1: 1e-5, 100: 1e-5}  # Adjust learning rate at epoch 1
+            epoch_lr_map = {1: 3e-4, 1000: 1e-4, 2000: 5e-5}  # Adjust learning rate at epoch 1
 
             # Define a lambda function for learning rate scheduling
             lr_lambda = lambda epoch: epoch_lr_map.get(epoch, default_lr) / default_lr
@@ -200,9 +194,7 @@ def start_training(root_folder, database_file, train_from, clip_models, val_perc
     input_size = get_total_dim(clip_models)
     print("input size", input_size)  # 1152
 
-    global class_weight_metrics
-    class_weight_metrics = class_weight
-    net = MultiLayerPerceptron(input_size=input_size)
+    net = MultiLayerPerceptron(input_size=input_size, class_weights=class_weight)
     callbacks = [
         ModelCheckpoint(save_top_k=1, mode='max', monitor="val_acc"),
         LearningRateMonitor(logging_interval='epoch'),
@@ -285,7 +277,7 @@ def setup_dataset(root_folder, database_file, train_from):
     val_dataset = TensorDataset(val_tensor_x, val_tensor_y)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
-    return train_loader, val_loader, model_name, class_weight_tensor
+    return train_loader, val_loader, model_name, class_weight_tensor.to(device)
 
 
 def get_total_dim(clip_models):

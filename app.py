@@ -1,14 +1,13 @@
 import pathlib
 import pandas as pd
-from flask import Flask, render_template, send_file, redirect, request, url_for
-from helpers import get_random_image, initialize_database
+from flask import Flask, render_template, send_file, redirect, request
+from helpers import initialize_database
 from prepare_training_data import prepare_training_data
-from train_predictor import train_predictor
+from _old.train_predictor import train_predictor
 from predict_score import predict_score, validate_prediction
 from export_prediction import export_prediction
 import torch.multiprocessing
 import open_clip
-import ast
 from random import randint
 app = Flask(__name__)
 

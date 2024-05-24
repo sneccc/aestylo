@@ -1,11 +1,9 @@
 import torch
 from PIL import Image
-import clip
 from tqdm import tqdm
 import pandas as pd
 import pathlib
 
-from train_predictor import MLP  # MLP BertAestheticScorePredictor
 from train_new import MultiLayerPerceptron
 from prepare_training_data import normalized
 import open_clip
