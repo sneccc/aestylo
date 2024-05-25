@@ -82,6 +82,7 @@ def predict_score(root_folder, database_file, train_from, clip_models):
 
         with torch.no_grad(), torch.cuda.amp.autocast():
             prediction = mlp_model(torch.from_numpy(im_emb_arr).to(device))
+            print(prediction)
         predicted_labels = torch.argmax(prediction, dim=1).cpu()  # Move to CPU
 
         predicted_labels += 1
