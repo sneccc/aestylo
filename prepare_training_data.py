@@ -40,7 +40,7 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models, l
     for clip_model in clip_models:
         if clip_model[0] == "hf-hub:timm":
             model, preprocess = open_clip.create_model_from_pretrained(
-                clip_model[0] + "/" + clip_model[1])  # for hf-hub:timm/ViT-SO400M-14-SigLIP-384 format
+                clip_model[0] + "/" + clip_model[1],device=device)  # for hf-hub:timm/ViT-SO400M-14-SigLIP-384 format
             model.to(device)
             model.eval()
         else:
@@ -92,7 +92,6 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models, l
 
         with torch.no_grad(), torch.cuda.amp.autocast():
             for model in models:
-
                 features = model.encode_image(batch_images_tensor)
                 image_features_list.append(features)
 
@@ -110,4 +109,5 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models, l
     y_out = f"{prefix}_y_{train_from}.npy"
     np.save(path / x_out, x)
     np.save(path / y_out, y)
+
 

@@ -15,6 +15,8 @@ def predict_score(root_folder, database_file, train_from, clip_models):
     path = pathlib.Path(root_folder)
     database_path = path / database_file
     database = pd.read_csv(database_path)
+    unique_labels = database['label'].unique()
+    num_classes = len(unique_labels)
 
     # clip_models=[('ViT-B-16', 'openai'),('RN50', 'openai')]
 
@@ -40,7 +42,7 @@ def predict_score(root_folder, database_file, train_from, clip_models):
         preprocessors.append(preprocess)
 
     # Use the total dimension for the MLP model
-    mlp_model = MultiLayerPerceptron(input_size=total_dim)
+    mlp_model = MultiLayerPerceptron(input_size=total_dim,num_classes=num_classes)
     model_name = f"{prefix}_linear_predictor_concatenated_{train_from}_mse.pth"
     mlp_model.load_state_dict(torch.load(path / model_name))
     mlp_model.to(device)

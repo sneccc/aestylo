@@ -25,7 +25,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class MultiLayerPerceptron(pl.LightningModule):
-    def __init__(self, input_size, hidden_units=(1024, 512,128,64,8)):  # class_weights=None
+    def __init__(self, input_size,num_classes, hidden_units=(1024,512, 256, 128)):  # class_weights=None
         super().__init__()
         # self.test_acc = Accuracy()
 
@@ -33,27 +33,26 @@ class MultiLayerPerceptron(pl.LightningModule):
         # self.loss_fn = nn.CrossEntropyLoss(weight=class_weights) if class_weights is not None else nn.CrossEntropyLoss()
 
         # Train Metrics
-        self.train_acc = Accuracy(num_classes=3, average='macro', multiclass=True)
-        self.train_f1_score = F1Score(num_classes=3, average='macro', multiclass=True)
-        self.train_precision = Precision(num_classes=3, average='macro', multiclass=True)
-        self.train_recall = Recall(num_classes=3, average='macro', multiclass=True)
+        self.train_acc = Accuracy(num_classes=num_classes, average='macro', multiclass=True)
+        self.train_f1_score = F1Score(num_classes=num_classes, average='macro', multiclass=True)
+        self.train_precision = Precision(num_classes=num_classes, average='macro', multiclass=True)
+        self.train_recall = Recall(num_classes=num_classes, average='macro', multiclass=True)
 
         # Validation Metrics
-        self.val_acc = Accuracy(num_classes=3, average='macro', multiclass=True)
-        self.val_f1_score = F1Score(num_classes=3, average='macro', multiclass=True)
-        self.val_precision = Precision(num_classes=3, average='macro', multiclass=True)
-        self.val_recall = Recall(num_classes=3, average='macro', multiclass=True)
+        self.val_acc = Accuracy(num_classes=num_classes, average='macro', multiclass=True)
+        self.val_f1_score = F1Score(num_classes=num_classes, average='macro', multiclass=True)
+        self.val_precision = Precision(num_classes=num_classes, average='macro', multiclass=True)
+        self.val_recall = Recall(num_classes=num_classes, average='macro', multiclass=True)
 
         all_layers = [nn.Flatten()]
         for index, hidden_unit in enumerate(hidden_units):
             all_layers.append(nn.Linear(input_size, hidden_unit))
             all_layers.append(nn.ReLU())
-            if index < len(hidden_units) - 1:
-                all_layers.append(nn.Dropout(0.3))  # Reduced dropout
+            all_layers.append(nn.Dropout(0.5))  # Reduced dropout
             input_size = hidden_unit
 
         # Output layer for 3 classes (assuming classification with 3 exclusive classes)
-        all_layers.append(nn.Linear(hidden_units[-1], 3))
+        all_layers.append(nn.Linear(hidden_units[-1], num_classes))
         self.model = nn.Sequential(*all_layers)
 
     def forward(self, x):
@@ -173,16 +172,16 @@ class MultiLayerPerceptron(pl.LightningModule):
             return [optimizer], [scheduler]
         else:
             # Initial learning rate
-            default_lr = 2e-3
+            default_lr = 5e-5
 
             # Learning rate adjustments for specific epochs
-            epoch_lr_map = {1: 2e-4, 1000: 1e-4, 2000: 5e-5}  # Adjust learning rate at epoch 1
+            epoch_lr_map = {1: 5e-5}  # Adjust learning rate at epoch 1
 
             # Define a lambda function for learning rate scheduling
             lr_lambda = lambda epoch: epoch_lr_map.get(epoch, default_lr) / default_lr
 
             # Initialize the optimizer with weight decay
-            optimizer = torch.optim.SGD(self.parameters(), lr=default_lr, momentum=0.9, weight_decay=1e-5)
+            optimizer = torch.optim.SGD(self.parameters(), lr=default_lr, momentum=0.9, weight_decay=1e-8)
 
             # Set up the learning rate scheduler
             scheduler = LambdaLR(optimizer, lr_lambda)
@@ -192,13 +191,13 @@ class MultiLayerPerceptron(pl.LightningModule):
 
 def start_training(root_folder, database_file, train_from, clip_models, val_percentage=0.25, epochs=5000,
                    batch_size=1000):
-    train_dataloader, val_dataloader, model_name, class_weight = setup_dataset(root_folder=root_folder,
+    train_dataloader, val_dataloader, model_name, class_weight,num_classes = setup_dataset(root_folder=root_folder,
                                                                                database_file=database_file,
                                                                                train_from=train_from)
     input_size = get_total_dim(clip_models)
     print("input size", input_size)  # 1152
 
-    net = MultiLayerPerceptron(input_size=input_size)
+    net = MultiLayerPerceptron(input_size=input_size,num_classes=num_classes)
     callbacks = [
         ModelCheckpoint(save_top_k=1, mode='max', monitor="val_acc"),
         LearningRateMonitor(logging_interval='epoch'),
@@ -227,8 +226,6 @@ def start_training(root_folder, database_file, train_from, clip_models, val_perc
     save_path = pathlib.Path(root_folder) / model_name
     print("-> saving model in to.. ", save_path)
     torch.save(net.state_dict(), save_path)
-
-    return
 
 
 def custom_collate_fn(batch):
@@ -281,7 +278,7 @@ def setup_dataset(root_folder, database_file, train_from):
     val_dataset = TensorDataset(val_tensor_x, val_tensor_y)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
-    return train_loader, val_loader, model_name, class_weight_tensor.to(device)
+    return train_loader, val_loader, model_name, class_weight_tensor.to(device),num_classes
 
 
 def get_total_dim(clip_models):
