@@ -171,11 +171,12 @@ class MultiLayerPerceptron(pl.LightningModule):
             scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
             return [optimizer], [scheduler]
         else:
+            #5e-5 was good
             # Initial learning rate
-            default_lr = 5e-5
+            default_lr = 3e-4
 
             # Learning rate adjustments for specific epochs
-            epoch_lr_map = {1: 5e-5}  # Adjust learning rate at epoch 1
+            epoch_lr_map = {1: 3e-4}  # Adjust learning rate at epoch 1
 
             # Define a lambda function for learning rate scheduling
             lr_lambda = lambda epoch: epoch_lr_map.get(epoch, default_lr) / default_lr
@@ -189,7 +190,7 @@ class MultiLayerPerceptron(pl.LightningModule):
             return [optimizer], [scheduler]
 
 
-def start_training(root_folder, database_file, train_from, clip_models, val_percentage=0.25, epochs=5000,
+def start_training(root_folder, database_file, train_from, clip_models, val_percentage=0.25, epochs=10000,
                    batch_size=1000):
     train_dataloader, val_dataloader, model_name, class_weight,num_classes = setup_dataset(root_folder=root_folder,
                                                                                database_file=database_file,
@@ -203,8 +204,8 @@ def start_training(root_folder, database_file, train_from, clip_models, val_perc
         LearningRateMonitor(logging_interval='epoch'),
         EarlyStopping(
             monitor='val_loss',
-            min_delta=0.00,
-            patience=50,
+            min_delta=0.0001,
+            patience=10,
             verbose=True,
             mode='min'
         )
@@ -218,7 +219,7 @@ def start_training(root_folder, database_file, train_from, clip_models, val_perc
         devices="auto",
         accelerator="gpu",
         callbacks=callbacks,
-        check_val_every_n_epoch=int((epochs / batch_size) * 5)  # Check validation every 10 epochs
+        check_val_every_n_epoch=10  # Check validation every 10 epochs
     )
 
     trainer.fit(net, train_dataloader, val_dataloader)
@@ -246,7 +247,7 @@ def setup_dataset(root_folder, database_file, train_from):
     y_features = np.load(y_features_path)
 
     validation_percentage = 0.15
-    batch_size = 64
+    batch_size = 256
 
     indices = np.arange(x_embeddings.shape[0])
     np.random.shuffle(indices)
@@ -268,9 +269,11 @@ def setup_dataset(root_folder, database_file, train_from):
     print("🐍 Class Frequency: ", class_counts)
     total_samples = len(train_tensor_y)
     num_classes = len(class_counts)
+    print("🐍 Number of classes: ", num_classes)
     class_weights = total_samples / (num_classes * class_counts)
     class_weight_tensor = torch.tensor(class_weights, dtype=torch.float)
     print("🐍 Class weights: ", class_weight_tensor)
+
 
     train_dataset = TensorDataset(train_tensor_x, train_tensor_y)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)

@@ -31,8 +31,8 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models, l
     database = pd.read_csv(database_path)
 
     if train_from == "label":
-        df = database[database.label != 0].reset_index(drop=True) #Drop all values with label 0
-        df['label'] = df['label'] - 1 #shift the range from [1,2,3] to [0,1,2]
+        df = database[database.label != -99].reset_index(drop=True) #Drop all values with label 0
+        df['label'] = df['label']
 
     models = []
     preprocessors = []
@@ -53,7 +53,7 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models, l
     x, y = [], []
 
     # Process images in batches
-    batch_size = 128
+    batch_size = 256
     for start_idx in tqdm(range(0, len(df), batch_size), desc="Processing batches"):
         end_idx = start_idx + batch_size
         batch_df = df.iloc[start_idx:end_idx]
@@ -68,7 +68,7 @@ def prepare_training_data(root_folder, database_file, train_from, clip_models, l
             if train_from == "label":
                 rating = int(row.label)
 
-            if rating == -1:  # Ignoring -1 labels these are for test other than that should be for training
+            if rating == -99:  # Ignoring -1 labels these are for test other than that should be for training
                 print("ignoring label -1")
                 continue
 

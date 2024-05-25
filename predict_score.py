@@ -3,7 +3,7 @@ from PIL import Image
 from tqdm import tqdm
 import pandas as pd
 import pathlib
-
+from PIL import Image, UnidentifiedImageError
 from train_new import MultiLayerPerceptron
 from prepare_training_data import normalized
 import open_clip
@@ -17,6 +17,8 @@ def predict_score(root_folder, database_file, train_from, clip_models):
     database = pd.read_csv(database_path)
     unique_labels = database['label'].unique()
     num_classes = len(unique_labels)
+    total_predictions = []
+    indices_to_drop = []  # Track indices of failed images
 
     # clip_models=[('ViT-B-16', 'openai'),('RN50', 'openai')]
 
@@ -48,7 +50,7 @@ def predict_score(root_folder, database_file, train_from, clip_models):
     mlp_model.to(device)
     mlp_model.eval()
 
-    batch_size = 32
+    batch_size = 256
     total_predictions = []
 
     # Process in batches
@@ -57,15 +59,22 @@ def predict_score(root_folder, database_file, train_from, clip_models):
         batch_df = database.iloc[start_idx:end_idx]
 
         batch_images = []
-        for _, row in batch_df.iterrows():
-            pil_image = Image.open(row["path"])
-            images = [preprocessor(pil_image).unsqueeze(0).to(device) for preprocessor in preprocessors]
-            batch_images.append(torch.cat(images, dim=0))
+        current_indices = []  # Track current batch indices for successful processing
+
+        for index, row in batch_df.iterrows():
+            try:
+                with Image.open(row["path"]) as pil_image:
+                    images = [preprocessor(pil_image).unsqueeze(0).to(device) for preprocessor in preprocessors]
+                    batch_images.append(torch.cat(images, dim=0))
+                    current_indices.append(index)
+            except Exception as e:
+                print(f"Error on {row['path']},  dropping this index")
+                indices_to_drop.append(index)
 
         if not batch_images:
             continue
 
-        # Stack images and process through models
+        # Further processing
         batch_images_tensor = torch.cat(batch_images, dim=0)
         image_features_list = []
         with torch.no_grad():
@@ -74,31 +83,18 @@ def predict_score(root_folder, database_file, train_from, clip_models):
                 image_features_list.append(features)
 
         concatenated_features = torch.cat(image_features_list, dim=1)
-
-        # Normalize
         im_emb_arr = concatenated_features.cpu().detach().numpy()
-        im_emb_arr = normalized(im_emb_arr)
-
-        # Predict
-        batch_predictions=[]
 
         with torch.no_grad(), torch.cuda.amp.autocast():
             prediction = mlp_model(torch.from_numpy(im_emb_arr).to(device))
-            print(prediction)
-        predicted_labels = torch.argmax(prediction, dim=1).cpu()  # Move to CPU
+            predicted_labels = torch.argmax(prediction, dim=1).cpu().numpy()
 
-        predicted_labels += 1
-        print(predicted_labels)
+        total_predictions.extend(predicted_labels.tolist())
 
-        total_predictions.extend(predicted_labels.numpy().tolist())
-        #   print(total_predictions)
-
-
-    if train_from == "label":
-        database["label_pred"] = total_predictions
-    elif train_from == "score":
-        database["score_pred"] = total_predictions
-
+    # Drop problematic indices from the original DataFrame
+    database = database.drop(indices_to_drop)
+    # Ensure total_predictions and database have the same length
+    database["label_pred"] = total_predictions
     database.to_csv(database_path, index=False)
     return database
 

@@ -5,6 +5,7 @@ from train_new import start_training
 from predict_score import predict_score
 from tensorboard.program import TensorBoard
 from export_prediction import export_prediction
+import os
 
 
 # change
@@ -31,7 +32,10 @@ def main(arguments):
         _, labels_dict = initialize_database_any(arguments.input, database_file, is_label_from_folder=True)
         print(labels_dict)
 
-        prepare_training_data(arguments.input, database_file, "label", clip_model, labels_dict)
+        npy_files = [f for f in os.listdir(arguments.input) if f.endswith('.npy')]
+        if not npy_files:
+            prepare_training_data(arguments.input, database_file, "label", clip_model, labels_dict)
+
         start_training(arguments.input, database_file, "label", clip_model)
     else:
         print("")

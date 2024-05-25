@@ -106,7 +106,7 @@ def initialize_database_any(root_folder, database_file, is_label_from_folder: bo
             if image_count >= TEST_MAX_IMAGES:
                 break
             image_path_list.append(str(path))
-            labels.append(0)
+            labels.append(-99)
             label_names.append('Unlabeled')
             image_count += 1
 
